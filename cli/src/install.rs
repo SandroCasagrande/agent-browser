@@ -129,6 +129,10 @@ fn chrome_binary_in_dir(dir: &Path) -> Option<PathBuf> {
         if inner.exists() {
             return Some(inner);
         }
+        let inner_arm64 = dir.join("chrome-linux-arm64/chrome");
+        if inner_arm64.exists() {
+            return Some(inner_arm64);
+        }
         None
     }
 
@@ -164,6 +168,10 @@ fn platform_key() -> &'static str {
     {
         "linux64"
     }
+    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+    {
+        "linux-arm64"
+    }
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
     {
         "win64"
@@ -172,12 +180,12 @@ fn platform_key() -> &'static str {
         all(target_os = "macos", target_arch = "aarch64"),
         all(target_os = "macos", target_arch = "x86_64"),
         all(target_os = "linux", target_arch = "x86_64"),
+        all(target_os = "linux", target_arch = "aarch64"),
         all(target_os = "windows", target_arch = "x86_64"),
     )))]
     {
-        // Compiles on unsupported platforms (e.g. linux aarch64) so the binary
-        // can still be used for other commands like `connect`. The install path
-        // guards against this at runtime before calling platform_key().
+        // Compiles on unsupported platforms so the binary can still be used
+        // for other commands like `connect`.
         panic!("Unsupported platform for Chrome for Testing download")
     }
 }
@@ -195,33 +203,33 @@ async fn fetch_download_url() -> Result<(String, String), String> {
         .await
         .map_err(|e| format!("Failed to parse version info: {}", e))?;
 
-    let channel = body
-        .get("channels")
-        .and_then(|c| c.get("Stable"))
-        .ok_or("No Stable channel found in version info")?;
+    let platform = platform_key();
+    let (channel, url) = ["Stable", "Beta", "Dev", "Canary"]
+        .iter()
+        .find_map(|name| {
+            let channel = body.get("channels")?.get(*name)?;
+            let url = channel
+                .get("downloads")
+                .and_then(|d| d.get("chrome"))
+                .and_then(|c| c.as_array())
+                .and_then(|arr| {
+                    arr.iter().find_map(|entry| {
+                        if entry.get("platform")?.as_str()? == platform {
+                            Some(entry.get("url")?.as_str()?.to_string())
+                        } else {
+                            None
+                        }
+                    })
+                })?;
+            Some((channel, url))
+        })
+        .ok_or_else(|| format!("No download URL found for platform: {}", platform))?;
 
     let version = channel
         .get("version")
         .and_then(|v| v.as_str())
         .ok_or("No version string found")?
         .to_string();
-
-    let platform = platform_key();
-
-    let url = channel
-        .get("downloads")
-        .and_then(|d| d.get("chrome"))
-        .and_then(|c| c.as_array())
-        .and_then(|arr| {
-            arr.iter().find_map(|entry| {
-                if entry.get("platform")?.as_str()? == platform {
-                    Some(entry.get("url")?.as_str()?.to_string())
-                } else {
-                    None
-                }
-            })
-        })
-        .ok_or_else(|| format!("No download URL found for platform: {}", platform))?;
 
     Ok((version, url))
 }
@@ -398,18 +406,6 @@ fn extract_zip(bytes: Vec<u8>, dest: &Path) -> Result<(), String> {
 }
 
 pub fn run_install(with_deps: bool) {
-    if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
-        eprintln!(
-            "{} Chrome for Testing does not provide Linux ARM64 builds.",
-            color::error_indicator()
-        );
-        eprintln!("  Install Chromium from your system package manager instead:");
-        eprintln!("    sudo apt install chromium-browser   # Debian/Ubuntu");
-        eprintln!("    sudo dnf install chromium            # Fedora");
-        eprintln!("  Then use: agent-browser --executable-path /usr/bin/chromium");
-        exit(1);
-    }
-
     let is_linux = cfg!(target_os = "linux");
 
     if is_linux {

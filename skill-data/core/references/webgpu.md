@@ -57,7 +57,7 @@ The SwiftShader Vulkan path needs the system Vulkan loader and Mesa ICD. Without
 apt-get install -y libvulkan1 mesa-vulkan-drivers
 ```
 
-Container recipe (Debian/Ubuntu base; xvfb needed only for the screenshot path). Verified with both Chrome for Testing and Debian's `chromium` package (set `AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` for the latter — useful on ARM64, where Chrome for Testing has no Linux builds):
+Container recipe (Debian/Ubuntu base; xvfb needed only for the screenshot path). Verified with both Chrome for Testing and Debian's `chromium` package (set `AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` for the latter; Debian's package remains useful on ARM64 when a Chrome for Testing channel does not publish a matching build):
 
 ```dockerfile
 FROM node:22-bookworm-slim
