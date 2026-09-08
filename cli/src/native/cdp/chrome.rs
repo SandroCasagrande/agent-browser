@@ -1632,7 +1632,14 @@ fn find_puppeteer_chrome() -> Option<PathBuf> {
 
 #[cfg(target_os = "linux")]
 fn build_puppeteer_binary_path(version_dir: &Path) -> PathBuf {
-    version_dir.join("chrome-linux64/chrome")
+    #[cfg(target_arch = "aarch64")]
+    {
+        version_dir.join("chrome-linux-arm64/chrome")
+    }
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        version_dir.join("chrome-linux64/chrome")
+    }
 }
 
 #[cfg(target_os = "macos")]
