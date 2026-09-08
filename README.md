@@ -8,10 +8,13 @@ Browser automation CLI for AI agents. Fast native Rust CLI.
 
 ### Global Installation (recommended)
 
-Installs the native Rust binary:
+Installs the native Rust binary.
+
+> **Temporary fork:** These installation commands currently target `SandroCasagrande/agent-browser`.
 
 ```bash
-npm install -g agent-browser
+# TEMPORARY FORK
+npm install -g github:SandroCasagrande/agent-browser#main
 agent-browser install  # Download Chrome from Chrome for Testing (first time only)
 ```
 
@@ -20,7 +23,8 @@ agent-browser install  # Download Chrome from Chrome for Testing (first time onl
 For projects that want to pin the version in `package.json`:
 
 ```bash
-npm install agent-browser
+# TEMPORARY FORK
+npm install github:SandroCasagrande/agent-browser#main
 agent-browser install
 ```
 
