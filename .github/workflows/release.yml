@@ -128,6 +128,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="v${VERSION}"
+          TITLE="agent-browser ${VERSION} (Linux ARM64 fork)"
           ASSET="artifacts/agent-browser-linux-arm64"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
@@ -135,7 +136,7 @@ jobs:
           else
             gh release create "$TAG" \
               --target "$GITHUB_SHA" \
-              --title "$TAG" \
+              --title "$TITLE" \
               --notes-file /tmp/release-notes.md \
               "$ASSET"
           fi

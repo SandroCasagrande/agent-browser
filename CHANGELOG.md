@@ -1,8 +1,20 @@
 # agent-browser
 
-## 0.39.1
+## 0.39.1 (patched)
 
 <!-- release:start -->
+### Linux ARM64 Fork
+
+- Added **native Linux ARM64 CI and releases** for the fork, including ARM64 validation, a glibc 2.28-compatible release binary, and fork-aware binary downloads.
+- Added **Chrome for Testing installation on Linux ARM64** by selecting the first release channel that publishes an ARM64 build and recognizing its platform-specific installation paths.
+
+### Contributors
+
+- @SandroCasagrande
+<!-- release:end -->
+
+## 0.39.1
+
 ### Bug Fixes
 
 - Fixed **duplicate command execution after a lost daemon response** so mutating and launch commands are no longer retried after any request bytes have been sent. CLI JSON and MCP responses report `outcome_unknown` so callers can inspect the result before retrying; read-only commands and failures before sending retain their retries (#2085)
@@ -11,7 +23,6 @@
 
 - @Railly
 - @rotemb-wond
-<!-- release:end -->
 
 ## 0.39.0
 
