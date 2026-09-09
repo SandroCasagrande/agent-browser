@@ -49,6 +49,9 @@ const SCREENCAST_QUALITY: u32 = 80;
 /// The page may already be gone by the time a recording stops.
 const TEARDOWN_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Bound the best-effort seed capture so a blocked renderer cannot stall the daemon.
+const SEED_FRAME_TIMEOUT: Duration = Duration::from_secs(10);
+
 /// Characters of ffmpeg's stderr kept in a failure message. ffmpeg prints
 /// the cause last, after the banner and stream summaries, so the tail is
 /// the part worth showing.
@@ -155,7 +158,7 @@ pub struct RecordingState {
     pub fps: u32,
     /// Frames written to the file, including frames held through gaps.
     pub frame_count: u64,
-    /// Distinct frames received from the screencast.
+    /// Distinct source frames captured, including any initial seed frame.
     pub captured_count: u64,
     pub capture_task: Option<tokio::task::JoinHandle<Result<(), String>>>,
     pub shared_frame_count: Option<Arc<AtomicU64>>,
@@ -378,6 +381,87 @@ pub async fn check_ffmpeg_available() -> Result<(), String> {
     Ok(())
 }
 
+/// Capture a best-effort seed frame before starting the screencast. Some
+/// Chrome builds do not emit an initial screencast frame until the page
+/// repaints, so a static page otherwise produces an empty recording.
+pub async fn capture_seed_frame(client: &CdpClient, page_session_id: &str) -> Option<Vec<u8>> {
+    let capture = async {
+        let metrics = client
+            .send_command(
+                "Runtime.evaluate",
+                Some(json!({
+                    "expression": "({ width: innerWidth, height: innerHeight, dpr: devicePixelRatio })",
+                    "returnByValue": true,
+                })),
+                Some(page_session_id),
+            )
+            .await?;
+        let value = metrics
+            .get("result")
+            .and_then(|result| result.get("value"))
+            .ok_or("Page viewport metrics were unavailable")?;
+        let width = value
+            .get("width")
+            .and_then(Value::as_f64)
+            .unwrap_or(1280.0)
+            .max(1.0);
+        let height = value
+            .get("height")
+            .and_then(Value::as_f64)
+            .unwrap_or(720.0)
+            .max(1.0);
+        let device_scale_factor = value.get("dpr").and_then(Value::as_f64).unwrap_or(1.0);
+        let scale = if device_scale_factor.is_finite() && device_scale_factor > 0.0 {
+            1.0 / device_scale_factor
+        } else {
+            1.0
+        };
+
+        client
+            .send_command(
+                "Page.captureScreenshot",
+                Some(json!({
+                    "format": "jpeg",
+                    "quality": SCREENCAST_QUALITY,
+                    "fromSurface": true,
+                    "clip": {
+                        "x": 0,
+                        "y": 0,
+                        "width": width,
+                        "height": height,
+                        "scale": scale,
+                    },
+                })),
+                Some(page_session_id),
+            )
+            .await
+    };
+
+    let result = match tokio::time::timeout(SEED_FRAME_TIMEOUT, capture).await {
+        Ok(Ok(result)) => result,
+        Ok(Err(error)) => {
+            if std::env::var("AGENT_BROWSER_DEBUG").is_ok() {
+                eprintln!("[recording] Seed frame capture failed: {error}");
+            }
+            return None;
+        }
+        Err(_) => {
+            if std::env::var("AGENT_BROWSER_DEBUG").is_ok() {
+                eprintln!("[recording] Seed frame capture timed out");
+            }
+            return None;
+        }
+    };
+
+    result
+        .get("data")
+        .and_then(Value::as_str)
+        .and_then(|data| {
+            base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data).ok()
+        })
+        .filter(|bytes| !bytes.is_empty())
+}
+
 /// Start the encoder process after the browser capture session is ready.
 pub fn spawn_ffmpeg(output_path: &str, fps: u32) -> Result<tokio::process::Child, String> {
     spawn_ffmpeg_command(&mut build_ffmpeg_command(output_path, fps))
@@ -398,6 +482,7 @@ pub fn spawn_recording_task(
     client: Arc<CdpClient>,
     capture_session: String,
     mut ffmpeg: tokio::process::Child,
+    initial_frame: Option<Vec<u8>>,
     fps: u32,
     shared_count: Arc<AtomicU64>,
     shared_captured: Arc<AtomicU64>,
@@ -440,6 +525,7 @@ pub fn spawn_recording_task(
                     &capture_session,
                     events,
                     stdin,
+                    initial_frame,
                     period,
                     max_frames_per_tick,
                     &shared_count,
@@ -488,6 +574,7 @@ async fn capture_frames(
     capture_session: &str,
     mut events: mpsc::Receiver<super::cdp::types::CdpEvent>,
     mut stdin: tokio::process::ChildStdin,
+    initial_frame: Option<Vec<u8>>,
     period: Duration,
     max_frames_per_tick: u64,
     shared_count: &AtomicU64,
@@ -505,8 +592,20 @@ async fn capture_frames(
     // next none; the queue carries the spare across instead of dropping it
     // and repeating its predecessor.
     let mut pending: VecDeque<Vec<u8>> = VecDeque::new();
-    let mut last: Option<Vec<u8>> = None;
+    let mut last = initial_frame;
     let mut written: u64 = 0;
+
+    // Write the seed before entering the select loop. Cancellation may already
+    // be ready for a short recording, and must not win before its first frame.
+    if let Some(frame) = last.as_deref() {
+        if stdin.write_all(frame).await.is_err() {
+            drop(stdin);
+            return Ok(());
+        }
+        written = 1;
+        shared_count.fetch_add(1, Ordering::Relaxed);
+        shared_captured.fetch_add(1, Ordering::Relaxed);
+    }
 
     loop {
         tokio::select! {

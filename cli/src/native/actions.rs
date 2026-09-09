@@ -1097,6 +1097,7 @@ impl DaemonState {
                 return Err(e);
             }
         };
+        let initial_frame = recording::capture_seed_frame(&client, &session_id).await;
         let ffmpeg = match recording::spawn_ffmpeg(
             &self.recording_state.output_path,
             self.recording_state.fps,
@@ -1118,6 +1119,7 @@ impl DaemonState {
             client,
             capture_session,
             ffmpeg,
+            initial_frame,
             self.recording_state.fps,
             shared_count.clone(),
             shared_captured.clone(),

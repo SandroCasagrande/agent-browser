@@ -7432,6 +7432,21 @@ async fn e2e_recording_honors_requested_fps() {
     .await;
     assert_success(&resp);
 
+    // A non-default scale factor verifies the seed and screencast frames use
+    // the same pixel dimensions throughout the recording.
+    let resp = execute_command(
+        &json!({
+            "id": "2b",
+            "action": "viewport",
+            "width": 800,
+            "height": 600,
+            "deviceScaleFactor": 2,
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
     let tmp_dir = std::env::temp_dir();
     let rec_path = tmp_dir.join(format!("ab-e2e-rec-fps-{}.webm", std::process::id()));
     let resp = execute_command(
@@ -7454,6 +7469,20 @@ async fn e2e_recording_honors_requested_fps() {
     let tabs = get_data(&resp)["tabs"].as_array().unwrap().len();
     assert_eq!(tabs, 1, "the recorded page only, nothing else");
 
+    // Keep repainting so this test verifies that real screencast frames still
+    // flow in addition to the fallback seed used for a static page.
+    let resp = execute_command(
+        &json!({
+            "id": "3c",
+            "action": "evaluate",
+            "script": "window.__abRepaint = setInterval(() => { document.body.style.opacity = document.body.style.opacity === '0.99' ? '1' : '0.99'; }, 50); [innerWidth, innerHeight, devicePixelRatio]"
+        }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+    assert_eq!(get_data(&resp)["result"], json!([800, 600, 2]));
+
     tokio::time::sleep(tokio::time::Duration::from_millis(RECORD_MS)).await;
 
     let resp = execute_command(
@@ -7471,12 +7500,10 @@ async fn e2e_recording_honors_requested_fps() {
         frames >= expected / 2 && frames <= expected * 2,
         "expected roughly {expected} frames at {FPS} fps over {RECORD_MS}ms, got {frames}"
     );
-    // A static page repaints once, so the file is one captured frame held
-    // for the whole take.
     let captured = data["capturedFrames"].as_u64().unwrap();
     assert!(
-        (1..frames).contains(&captured),
-        "static page should yield a few captured frames held across {frames} written, got {captured}"
+        captured >= 2,
+        "expected a seed plus at least one screencast frame, got {captured}"
     );
 
     let size = std::fs::metadata(&rec_path).map(|m| m.len()).unwrap_or(0);
