@@ -1,8 +1,24 @@
 # agent-browser
 
-## 0.37.1
+## 0.37.1 (patched)
 
 <!-- release:start -->
+### Linux ARM64 Fork
+
+- Added **native Linux ARM64 CI and releases** for the fork, including ARM64 validation, a glibc 2.28-compatible release binary, and fork-aware binary downloads.
+- Added **Chrome for Testing installation on Linux ARM64** by selecting the first release channel that publishes an ARM64 build and recognizing its platform-specific installation paths.
+
+### Bug Fixes
+
+- Fixed **empty recordings on static pages in ARM64 Chrome** by capturing a viewport-sized seed frame before screencasting starts, while preserving device-scale-factor dimensions and subsequent live frames.
+
+### Contributors
+
+- @SandroCasagrande
+<!-- release:end -->
+
+## 0.37.1
+
 ### Bug Fixes
 
 - Fixed **Windows headless Chrome desktop artifacts** by isolating owned headless Chrome on a private desktop and ensuring its process tree is cleaned up when the daemon exits or is forcibly terminated. Headed and externally connected browsers retain their existing desktop behavior (#1498, #1820)
@@ -10,7 +26,6 @@
 ### Contributors
 
 - @ctate
-<!-- release:end -->
 
 ## 0.37.0
 

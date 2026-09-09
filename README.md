@@ -12,10 +12,21 @@ Installs the native Rust binary.
 
 > **Temporary fork:** These installation commands currently target `SandroCasagrande/agent-browser`.
 
+Install the `main` branch as a tarball:
+
 ```bash
 # TEMPORARY FORK
-npm install -g github:SandroCasagrande/agent-browser#main
+npm install -g \
+  'https://codeload.github.com/SandroCasagrande/agent-browser/tar.gz/refs/heads/main'
 agent-browser install  # Download Chrome from Chrome for Testing (first time only)
+```
+
+The tarball URL avoids npm's Git-dependency preparation step, which can leave
+the global executable pointing into npm's temporary cache and fail with
+`EEXIST`. To use the GitHub shorthand instead, enable packed file dependencies:
+
+```bash
+npm install -g --install-links=true github:SandroCasagrande/agent-browser#main
 ```
 
 ### Project Installation (local dependency)
