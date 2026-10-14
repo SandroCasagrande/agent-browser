@@ -1635,7 +1635,18 @@ async fn e2e_snapshot_and_click_ref() {
     assert_success(&resp);
 
     let resp = execute_command(
-        &json!({ "id": "2", "action": "navigate", "url": "https://example.com" }),
+        &json!({ "id": "2", "action": "navigate", "url": "about:blank" }),
+        &mut state,
+    )
+    .await;
+    assert_success(&resp);
+
+    // Hermetic fixture: external sites change their markup over time.
+    let resp = execute_command(
+        &json!({
+            "id": "2b", "action": "setcontent",
+            "html": "<h1>Fixture Heading</h1><a href='#first'>First link</a><a href='#second'>Second link</a>",
+        }),
         &mut state,
     )
     .await;
@@ -1646,7 +1657,7 @@ async fn e2e_snapshot_and_click_ref() {
     assert_success(&resp);
     let snapshot = get_data(&resp)["snapshot"].as_str().unwrap();
     assert!(
-        snapshot.contains("Example Domain"),
+        snapshot.contains("Fixture Heading"),
         "Snapshot should contain heading, got: {snapshot}"
     );
     assert!(snapshot.contains("ref=e1"), "Snapshot should have ref e1");
@@ -1656,24 +1667,31 @@ async fn e2e_snapshot_and_click_ref() {
         "Snapshot should have a link element"
     );
 
-    // Click the link by ref (e2 is the "More information..." link)
+    // Click the second link by ref (headings also get refs, so look it up by name)
+    let second_ref = get_data(&resp)["refs"]
+        .as_object()
+        .unwrap()
+        .iter()
+        .find(|(_, node)| node["name"] == "Second link")
+        .map(|(ref_id, _)| ref_id.clone())
+        .unwrap_or_else(|| panic!("Snapshot should have a ref for the second link: {snapshot}"));
     let resp = execute_command(
-        &json!({ "id": "4", "action": "click", "selector": "e2" }),
+        &json!({ "id": "4", "action": "click", "selector": second_ref }),
         &mut state,
     )
     .await;
     assert_success(&resp);
 
-    // Wait for navigation
-    tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+    // Wait for the fragment navigation
+    tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
     // Verify URL changed
     let resp = execute_command(&json!({ "id": "5", "action": "url" }), &mut state).await;
     assert_success(&resp);
     let url = get_data(&resp)["url"].as_str().unwrap();
     assert!(
-        url.contains("iana.org"),
-        "Should have navigated to iana.org, got: {}",
+        url.ends_with("#second"),
+        "Should have followed the second link, got: {}",
         url
     );
 
