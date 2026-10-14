@@ -1647,7 +1647,7 @@ async fn e2e_snapshot_and_click_ref() {
     let snapshot = get_data(&resp)["snapshot"].as_str().unwrap();
     assert!(
         snapshot.contains("Example Domain"),
-        "Snapshot should contain heading"
+        "Snapshot should contain heading, got: {snapshot}"
     );
     assert!(snapshot.contains("ref=e1"), "Snapshot should have ref e1");
     assert!(snapshot.contains("ref=e2"), "Snapshot should have ref e2");
